@@ -459,12 +459,11 @@ class CancelScope(BaseCancelScope):
 
         return should_retry
 
-    def _restart_cancellation_in_parent(self) -> None:
+    def _restart_cancellation(self) -> None:
         """
-        Restart the cancellation effort in the closest directly cancelled parent scope.
-
+        Restart the cancellation effort in this scope or the closest directly cancelled parent scope.
         """
-        scope = self._parent_scope
+        scope: CancelScope | None = self
         while scope is not None:
             if scope._cancel_called:
                 if scope._cancel_handle is None:
@@ -477,6 +476,14 @@ class CancelScope(BaseCancelScope):
                 break
 
             scope = scope._parent_scope
+
+    def _restart_cancellation_in_parent(self) -> None:
+        """
+        Restart the cancellation effort in the closest directly cancelled parent scope.
+
+        """
+        if self._parent_scope is not None:
+            self._parent_scope._restart_cancellation()
 
     def _reparent(self, new_parent: CancelScope) -> None:
         """
@@ -794,6 +801,7 @@ class TaskGroup(abc.TaskGroup):
             asyncio.future_add_to_awaited_by(task, self.cancel_scope._host_task)
 
         task.add_done_callback(task_done)
+        initial_scope._restart_cancellation()
         return handle
 
     def create_task(

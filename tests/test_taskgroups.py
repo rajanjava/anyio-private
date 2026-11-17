@@ -2557,3 +2557,31 @@ async def test_nan_deadline_setter_rejected() -> None:
     """Assigning a NaN deadline raises ValueError on all backends."""
     with pytest.raises(ValueError, match="deadline must not be NaN"):
         CancelScope().deadline = math.nan
+
+
+async def test_task_spawned_into_already_cancelled_taskgroup() -> None:
+    helper_done = Event()
+
+    async def helper() -> None:
+        try:
+            await sleep_forever()
+        finally:
+            helper_done.set()
+
+    async def worker() -> None:
+        try:
+            await sleep_forever()
+        finally:
+            with move_on_after(5, shield=True) as cleanup:
+                for _ in range(10):
+                    await checkpoint()
+                tg.start_soon(helper)
+                await helper_done.wait()
+
+            assert not cleanup.cancelled_caught
+
+    async with create_task_group() as tg:
+        tg.start_soon(worker)
+        await wait_all_tasks_blocked()
+        tg.cancel_scope.cancel()
+
