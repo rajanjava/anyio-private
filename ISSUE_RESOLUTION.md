@@ -54,6 +54,11 @@ Prior to the fix:
 
 ---
 
+## Solution Approach
+1. **Trace Asyncio Cancellation State Machine:** When a new task is spawned into an already-cancelled `TaskGroup` / `CancelScope`, its cancellation delivery loop had already finished or been marked delivered, leaving the newly spawned child task running indefinitely and hanging `TaskGroup.__aexit__`.
+2. **Restart Cancellation Delivery on Late Spawn:** Updated `src/anyio/_backends/_asyncio.py` so that when a task enters or is spawned into a scope whose cancel status is already triggered, cancellation delivery is explicitly re-scheduled/restarted for the new task.
+3. **TDD & Regression Safety:** Added `test_task_spawned_into_already_cancelled_taskgroup` in `tests/test_taskgroups.py` verifying immediate cancellation without deadlock or hanging.
+
 ## 4. Code Fix
 In `src/anyio/_backends/_asyncio.py`:
 1. Introduced `CancelScope._restart_cancellation()` to traverse from the current scope upward through unshielded parent scopes, finding any cancelled scope whose `_cancel_handle is None` and restarting `_deliver_cancellation(scope)`.
